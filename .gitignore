@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# 忽略环境变量文件（存储密码）
+.env
+
+# 忽略 Spring Boot 配置（防止泄露数据库密码）
+application.properties
+application.yml
+application-dev.properties
+application-prod.properties
