@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 通知测试</title>
+</head>
+<body>
+<h2>WebSocket 通知测试</h2>
+<input type="text" id="messageInput" placeholder="输入消息">
+<button onclick="sendMessage()">发送</button>
+<div id="notification"></div>
+
+<script>
+    let socket = new WebSocket("ws://localhost/ws/notification"); // Nginx 代理
+
+    socket.onopen = function() {
+        document.getElementById("notification").innerHTML += "<p>WebSocket 连接成功！</p>";
+    };
+
+    socket.onmessage = function (event) {
+            if (event.data === "ping") {
+                console.log("收到服务器心跳 ping，保持连接");
+                return; // 不显示 "ping" 消息
+            }
+            let div = document.getElementById("notification");
+            div.innerHTML += "<p>" + event.data + "</p>";
+            console.log("收到 WebSocket 消息: " + event.data);
+        };
+
+    socket.onclose = function() {
+        document.getElementById("notification").innerHTML += "<p>连接已关闭</p>";
+    };
+
+    socket.onerror = function(error) {
+        document.getElementById("notification").innerHTML += "<p>连接错误：" + error + "</p>";
+    };
+
+    function sendMessage() {
+        let message = document.getElementById("messageInput").value;
+        socket.send(message);
+    }
+</script>
+</body>
+</html>

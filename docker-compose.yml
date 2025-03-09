@@ -1,0 +1,75 @@
+
+services:
+
+  # Spring Boot 应用
+  app:
+    build:
+      context: .   # 让 Docker 自动构建最新的代码
+      dockerfile: Dockerfile  #  指定 Dockerfile
+    image: backend-app-image  # 你的 Spring Boot 镜像
+    container_name: backend-app
+    restart: always
+    depends_on:
+      - mysql
+      - redis
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://backend-mysql:3306/backend_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: backend_user
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    ports:
+      - "8080:8080"
+
+  # MySQL 服务
+  mysql:
+    image: mysql:8.0
+    container_name: backend-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: backend_db
+      MYSQL_USER: backend_user
+      MYSQL_PASSWORD: 123456
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  # Nginx 代理
+  nginx:
+    image: nginx:latest
+    container_name: backend-nginx
+    restart: always
+    depends_on:
+      - app
+    ports:
+      - "80:80"   # 映射 80 端口
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro  # 绑定 Nginx 配置文件
+      - ./html:/usr/share/nginx/html:ro   # 挂载 index.html
+
+  redis:
+    image: redis:latest
+    container_name: backend-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: "123456"
+    command: redis-server --requirepass 123456
+
+    # RabbitMQ 队列
+  rabbitmq:
+    image: rabbitmq:management  # 启用 RabbitMQ 管理界面
+    container_name: backend-rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"  # RabbitMQ 端口
+      - "15672:15672"  # 启用管理界面（http://localhost:15672）
+
+volumes:
+  mysql_data:

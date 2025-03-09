@@ -1,0 +1,21 @@
+<configuration>
+
+    <!-- 定义日志输出到控制台 -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+<!--    <appender name="FILE" class="ch.qos.logback.core.FileAppender">-->
+<!--        <file>logs/app.log</file>-->
+        <encoder>
+            <pattern>[%d{yyyy-MM-dd HH:mm:ss}] [%level] [%thread] [%logger] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 指定 com.example 这个包的日志级别是 INFO -->
+    <logger name="com.example" level="INFO"/>
+
+    <!-- 应用全局日志 -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+<!--        <appender-ref ref ='FILE'/>-->
+    </root>
+
+</configuration>

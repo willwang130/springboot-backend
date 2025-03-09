@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短链接生成器 & WebSocket 通知</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; }
+        input, button { margin: 5px 0; padding: 10px; width: 100%; }
+        button { background: #007BFF; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        h2 { text-align: center; }
+        #notification { border: 1px solid #ddd; padding: 10px; margin-top: 10px; height: 150px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<h2>短链接生成器</h2>
+<input type="text" id="longUrl" placeholder="输入长链接...">
+<button onclick="generateShortUrl()">生成短链接</button>
+
+<h3>你的短链接：</h3>
+<p id="shortUrl"></p>
+
+<h3>查看访问次数：</h3>
+<input type="text" id="shortKey" placeholder="输入短链接 Key...">
+<button onclick="checkStats()">查询</button>
+<p id="stats"></p>
+
+<hr>
+
+<h2>WebSocket 通知测试</h2>
+<input type="text" id="messageInput" placeholder="输入 WebSocket 消息">
+<button onclick="sendMessage()">发送</button>
+<div id="notification"></div>
+
+<script>
+    // 生成短链接
+    async function generateShortUrl() {
+        let longUrl = document.getElementById("longUrl").value;
+        if (!longUrl.startsWith("http")) {
+            alert("请输入有效的网址");
+            document.getElementById("longUrl").value = "";
+            return;
+        }
+        try {
+            let response = await fetch("http://localhost/api/short-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({"longUrl": longUrl})
+            });
+
+            let data = await response.json();
+            if (!response.ok) {
+                let errorMsg = data.message || "请求失败";
+                alert("短链接生成失败：" + errorMsg);
+                return;
+            }
+
+            document.getElementById("shortUrl").innerHTML =
+                `<a href="http://localhost/short/${data.data}" target="_blank">
+                    http://localhost/short/${data.data}
+                </a>`;
+        } catch (error) {
+            alert("请求失败：" + error.message);
+        }
+
+    }
+
+    // 查询访问次数
+    async function checkStats() {
+        let shortKey = document.getElementById("shortKey").value;
+
+        if (!shortKey) {
+            alert("请输入短链接 Key");
+            return;
+        }
+        let response = await fetch(`http://localhost/api/short-url/stats/${shortKey}`);
+        let data = await response.json();
+        if (!response.ok) {
+        alert("查询失败：" + (data.message || "未知错误"));
+        return;
+    }
+
+        document.getElementById("stats").innerText = `访问次数：${data.data}`;
+    }
+
+    // WebSocket 连接
+    let socket = new WebSocket("ws://localhost/ws/notification");
+
+    socket.onopen = function() {
+        document.getElementById("notification").innerHTML += "<p>WebSocket 连接成功！</p>";
+    };
+
+    socket.onmessage = function (event) {
+        if (event.data === "ping") {
+            console.log("收到服务器心跳 ping，保持连接");
+            return;
+        }
+        let div = document.getElementById("notification");
+        div.innerHTML += "<p>" + event.data + "</p>";
+        console.log("收到 WebSocket 消息: " + event.data);
+    };
+
+    socket.onclose = function() {
+        document.getElementById("notification").innerHTML += "<p>连接已关闭</p>";
+    };
+
+    socket.onerror = function(error) {
+        document.getElementById("notification").innerHTML += "<p>连接错误：" + error + "</p>";
+    };
+
+    function sendMessage() {
+        let message = document.getElementById("messageInput").value;
+        socket.send(message);
+        document.getElementById("messageInput").value = "";
+    }
+</script>
+
+</body>
+</html>
