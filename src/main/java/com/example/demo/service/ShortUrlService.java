@@ -2,16 +2,18 @@ package com.example.demo.service;
 
 import com.example.demo.entity.ShortUrl;
 import com.example.demo.repository.ShortUrlRepository;
+import com.example.demo.service.RabbitMQ.RabbitMQProducer;
 import com.example.demo.util.RedisUtil;
 import com.example.demo.util.ShortKeyGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
+import jakarta.persistence.criteria.CriteriaBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -22,14 +24,10 @@ public class ShortUrlService {
 
     private final ShortUrlRepository shortUrlRepository;
     private final RedisUtil redisUtil;
-    private final RabbitTemplate rabbitTemplate;
+    private final RabbitMQProducer rabbitMQProducer;
     private static final String REDIS_KEY_PREFIX = "short_url:";
     private static final String REDIS_HITS_PREFIX = "short_url_hits:";
 
-    @Value("${app.rabbitmq.exchange}")
-    private String exchange;
-    @Value("${app.rabbitmq.routingkey}")
-    private String routingKey;
 
 
     public String redirect(String shortKey) {
@@ -47,9 +45,10 @@ public class ShortUrlService {
             redisUtil.setObjectByKey(REDIS_KEY_PREFIX + shortKey, longUrl, 7, TimeUnit.DAYS);
         }
 
-        // 3. 统计访问次数 发送访问统计到 RabbitMQ（异步处理）
-        log.info("发送消息到 RabbitMQ: {}", shortKey);  // 添加日志
-        rabbitTemplate.convertAndSend(exchange, routingKey, shortKey);
+        // 3. 统计访问次数 发送访问统计到 RabbitMQ
+        log.info("Producer 发送消息: {}", shortKey);
+        rabbitMQProducer.sendMessage(shortKey);
+
         // redisUtil.increment(REDIS_HITS_PREFIX + shortKey); //先存 Redis, 之后每10分钟 存1次数据库
 
         return longUrl;
@@ -88,17 +87,20 @@ public class ShortUrlService {
     }
 
 
-    public int getAccessCount(String shortKey) {
+    public Map<String, Integer> getAccessCount(String shortKey) {
+        Map<String, Integer> result = new HashMap<>();
 
-        // 先查 Redis
+        // 查 Redis
         String redisCount = redisUtil.getTokenByKey(REDIS_HITS_PREFIX + shortKey);
-        if (redisCount != null) {
-            return Integer.parseInt(redisCount);
-        }
+        int redisValue = redisCount != null ? Integer.parseInt(redisCount) : 0;
+        result.put("redis",redisValue);
 
-        // Redis 没有，再查数据库
-        return shortUrlRepository.findByShortKey(shortKey)
+        // 查 数据库
+        int mysqlValue = shortUrlRepository.findByShortKey(shortKey)
                 .map(ShortUrl::getAccessCount)
                 .orElse(0);
+        result.put("mysql", mysqlValue);
+
+        return result;
     }
 }

@@ -3,6 +3,8 @@ services:
 
   # Spring Boot 应用
   app:
+    env_file:
+      - .env
     build:
       context: .   # 让 Docker 自动构建最新的代码
       dockerfile: Dockerfile  #  指定 Dockerfile
@@ -14,9 +16,9 @@ services:
       - redis
       - rabbitmq
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://backend-mysql:3306/backend_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-      SPRING_DATASOURCE_USERNAME: backend_user
-      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_DATASOURCE_URL: jdbc:mysql://backend-mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
     ports:
       - "8080:8080"
@@ -27,10 +29,10 @@ services:
     container_name: backend-mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: backend_db
-      MYSQL_USER: backend_user
-      MYSQL_PASSWORD: 123456
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
@@ -56,8 +58,8 @@ services:
     ports:
       - "6379:6379"
     environment:
-      REDIS_PASSWORD: "123456"
-    command: redis-server --requirepass 123456
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
 
     # RabbitMQ 队列
   rabbitmq:

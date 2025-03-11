@@ -4,12 +4,11 @@ import com.example.demo.repository.ShortUrlRepository;
 import com.example.demo.util.RedisUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -20,20 +19,36 @@ public class ShortUrlStatsService {
     private final ShortUrlRepository shortUrlRepository;
     private static final String REDIS_HITS_PREFIX = "short_url_hits:";
 
+    // 每 5 秒执行一次 Redis List 更新到 Redis
+    @Transactional
+    @Scheduled(fixedRate = 5 * 1000)
+    public void synAccessCountToRedis() {
+        String redisListKey = "short_url_buffer";
+        while (true) {
+            // 一次取 100 个, 避免超大流量
+            List<String> shortKeyList = redisUtil.popFromRedisList("short_url_buffer", 100);
+            if (shortKeyList == null || shortKeyList.isEmpty()) {
+                break;
+            }
 
-    @RabbitListener(queues = "${app.rabbitmq.queue}")
-    public void updateAccessCount(String shortKey) {
-        log.info("RabbitMQ received message: shortKey = {}", shortKey);
+            // 统计每个点链接的访问次数
+            Map<String, Integer> countMap = new HashMap<>();
+            for (String shortKey : shortKeyList) {
+                countMap.put(shortKey, countMap.getOrDefault(shortKey, 0) + 1);
+            }
 
-        // 直接更新 Redis 计数
-        redisUtil.increment("short_url_hits:" + shortKey);
+            // 统一更新给 Redis 访问次数
+            for (Map.Entry<String, Integer> entry : countMap.entrySet()) {
+                redisUtil.incrementByInteger(REDIS_HITS_PREFIX + entry.getKey(), entry.getValue());
+                redisUtil.incrementByInteger("total_hits_count:", entry.getValue());  // 记录总访问量 测试用
+            }
+        }
     }
 
-
-    // 每 1 分钟执行一次 Redis 更新数据库
+    // 每 90 秒执行一次 Redis 更新到 数据库
     @Transactional
-    @Scheduled(fixedRate = 60000)
-    public void synAccessCountToDatabase() {
+    @Scheduled(fixedRate = 90  * 1000)
+    public void synAccessCountToDatabase() throws InterruptedException {
 
         // 获取所有 Redis 计数 Key
         Set<String> keys = redisUtil.getKeysByPattern(REDIS_HITS_PREFIX + "*");
@@ -42,20 +57,14 @@ public class ShortUrlStatsService {
             String shortKey = redisKey.replace(REDIS_HITS_PREFIX, ""); // 获取短链接 Key
             String redisCount = redisUtil.getTokenByKey(redisKey);
 
-            if (redisCount != null && redisCount.matches("\\d+")) {
+            if (redisCount != null) {
                 int count = Integer.parseInt(redisCount);
+                log.info("更新访问计数");
+                shortUrlRepository.incrementAccessCount(shortKey, count);
 
-                if (count > 0) {
-                    // 批量更新数据库
-                    log.info(" 更新访问计数: shortKey={}, count={}",shortKey, count);
-                    shortUrlRepository.incrementAccessCount(shortKey, count);
-
-                    // 清空 Redis 计数
-                    redisUtil.deleteCache(redisKey);
-                }
+                // 清空 Redis 计数
+                redisUtil.deleteCache(redisKey);
             }
         }
     }
-
-
 }

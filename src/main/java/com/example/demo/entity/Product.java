@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 
 @Entity // JPA 实体(Entity）类（class）表示这个类对应数据库里的一个表
 @Table(name = "product") //指定数据库表名 默认product
@@ -27,6 +28,15 @@ public class Product implements Serializable {
     @Column(nullable = false)
     private Double price;
 
+    @Column(name = "created_at", updatable = false, nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
+    }
 //    //无参数构造函数 必须！
 //    public Product () {}
 //    // 构造函数 (Constructor)
@@ -35,17 +45,4 @@ public class Product implements Serializable {
 //        this.price = price;
 //    }
 //    // getter, setter
-//    public Long getId() { return id; }
-//    public void setId(Long id) { this.id = id; }
-//
-//    public String getName() { return name; }
-//    public void setName(String name) { this.name = name; }
-//
-//    public Double getPrice() { return price; }
-//    public void setPrice(double price) { this.price = price; }
-//
-//    @Override
-//    public String toString(){
-//        return "Product{id=" + id + ", name='" + name + "', price=" + price + "}";
-//    }
 }

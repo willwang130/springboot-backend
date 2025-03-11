@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>短链接生成器 & WebSocket 通知</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; }
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding-bottom: 100px; }
         input, button { margin: 5px 0; padding: 10px; width: 100%; }
         button { background: #007BFF; color: white; border: none; cursor: pointer; }
         button:hover { background: #0056b3; }
@@ -25,7 +25,8 @@
 <h3>查看访问次数：</h3>
 <input type="text" id="shortKey" placeholder="输入短链接 Key...">
 <button onclick="checkStats()">查询</button>
-<p id="stats"></p>
+<p id="redis_stats"></p>
+<p id="mysql_stats"></p>
 
 <hr>
 
@@ -33,6 +34,38 @@
 <input type="text" id="messageInput" placeholder="输入 WebSocket 消息">
 <button onclick="sendMessage()">发送</button>
 <div id="notification"></div>
+
+<h2>添加测试 Product</h2>
+<button onclick="addProduct()">添加 Product</button>
+<p id="productResult"></p>
+
+<h2>数据库同步倒计时</h2>
+<p id="countdown">距离下次同步还有 <span id="timer">90</span> 秒</p>
+<h2>性能测试</h2>
+
+<!-- 测试 1 -->
+<button onclick="runTest(1)">测试 1 - Redis vs MySQL 查询</button>
+<p id="testResult1"></p>
+
+<!-- 测试 2 -->
+<button onclick="runTest(2)">测试 2 - RabbitMQ + Redis List 对数据库写入的减少</button>
+<p id="testResult2"></p>
+
+<!-- 测试 3 -->
+<button onclick="runTest(3)">测试 3 - 批量写入优化</button>
+<p id="testResult3"></p>
+
+<!-- 重置测试数据 -->
+<h2>重置所有测试数据</h2>
+<button onclick="resetAll()">重置 MySQL & Redis 计数</button>
+<p id="resetResult"></p>
+
+
+<h2>RabbitMQ 管理</h2>
+<button onclick="openRabbitMQ()">打开 RabbitMQ 管理界面</button>
+
+<h2>Swagger API 文档</h2>
+<button onclick="openSwagger()">打开 Swagger API 文档</button>
 
 <script>
     // 生成短链接
@@ -61,6 +94,7 @@
                 `<a href="http://localhost/short/${data.data}" target="_blank">
                     http://localhost/short/${data.data}
                 </a>`;
+            document.getElementById("shortKey").value = data.data;
         } catch (error) {
             alert("请求失败：" + error.message);
         }
@@ -69,6 +103,7 @@
 
     // 查询访问次数
     async function checkStats() {
+
         let shortKey = document.getElementById("shortKey").value;
 
         if (!shortKey) {
@@ -82,7 +117,8 @@
         return;
     }
 
-        document.getElementById("stats").innerText = `访问次数：${data.data}`;
+        document.getElementById("redis_stats").innerText = `Redis 访问次数：${data.data.redis}`;
+        document.getElementById("mysql_stats").innerText = `MySQL 访问次数：${data.data.mysql}`;
     }
 
     // WebSocket 连接
@@ -115,6 +151,86 @@
         socket.send(message);
         document.getElementById("messageInput").value = "";
     }
+
+    // 测试 performance
+     async function runTest(testNumber) {
+        try {
+            let response = await fetch(`http://localhost/api/test/performance/${testNumber}`);
+            let result = await response.text();
+
+            if (testNumber === 1) {
+                document.getElementById("testResult1").innerText = result;
+            } else if (testNumber === 2) {
+                document.getElementById("testResult2").innerText = result;
+            } else if (testNumber === 3) {
+                document.getElementById("testResult3").innerText = result;
+            }
+        } catch (error) {
+            if (testNumber === 1) {
+                document.getElementById("testResult1").innerText = "测试失败：" + error.message;
+            } else if (testNumber === 2) {
+                document.getElementById("testResult2").innerText = "测试失败：" + error.message;
+            } else if (testNumber === 3) {
+                document.getElementById("testResult3").innerText = "测试失败：" + error.message;
+            }
+        }
+    }
+    // RabbitMQ 管理
+    function openRabbitMQ() {
+        window.open("http://localhost:15672/", "_blank");
+    }
+    // Swagger
+    function openSwagger() {
+        window.open("http://localhost/swagger-ui/index.html", "_blank");
+    }
+
+    // 一键添加 product
+    async function addProduct() {
+        try {
+            let response = await fetch("http://localhost/api/products", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: "测试产品 " + new Date().toLocaleTimeString(),
+                    price: Math.floor(Math.random() * 1000) + 1
+                })
+            });
+
+            let result = await response.text();
+            document.getElementById("productResult").innerText = result;
+        } catch (error) {
+            document.getElementById("productResult").innerText = "添加失败：" + error.message;
+        }
+    }
+
+     // 重置所有测试数据
+     async function resetAll() {
+        try {
+            let response = await fetch("http://localhost/api/test/reset-all", {
+                method: "DELETE"
+            });
+
+            let result = await response.text();
+            document.getElementById("resetResult").innerText = result;
+        } catch (error) {
+            document.getElementById("resetResult").innerText = "重置失败：" + error.message;
+        }
+    }
+
+    // 初始化倒计时
+    let countdown = 90;
+
+    function updateCountdown() {
+        document.getElementById("timer").innerText = countdown;
+        if (countdown > 0) {
+            countdown--;
+        } else {
+            countdown = 90; // 重新开始倒计时
+        }
+    }
+
+    // 每秒更新倒计时
+    setInterval(updateCountdown, 1000);
 </script>
 
 </body>

@@ -18,8 +18,16 @@ public interface ShortUrlRepository extends JpaRepository<ShortUrl, Long> {
 
     List<ShortUrl> findByAccessCountGreaterThan(int i);
 
-    @Transactional
     @Modifying
     @Query("UPDATE ShortUrl u SET u.accessCount = u.accessCount + :count WHERE u.shortKey = :shortKey")
     void incrementAccessCount(@Param("shortKey") String shortKey, @Param("count") int count);
+
+    // 查询最近 N 分钟内access_count更新,访问 MySQL 总次数
+    @Query(value = "SELECT SUM(access_count) FROM short_url WHERE updated_at >= NOW() - INTERVAL ?1 MINUTE", nativeQuery = true)
+    long sumUpdatesLastNMin(@Param("minutes") int minutes);
+
+    @Modifying
+    @Query("UPDATE ShortUrl u SET u.accessCount = 0")
+    void resetAllAccessCounts();
+
 }

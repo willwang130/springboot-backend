@@ -12,9 +12,7 @@ import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -92,6 +90,10 @@ public class RedisUtil {
         redisTemplate.opsForValue().increment(key);
     }
 
+    public void incrementByInteger(String key, Integer i) {
+        redisTemplate.opsForValue().increment(key, i);
+    }
+
     public Set<String> getKeysByPattern(String pattern) {
         Set<String> keys = new HashSet<>();
         try (Cursor<byte[]> cursor = Objects.requireNonNull(redisTemplate.getConnectionFactory()).getConnection()
@@ -103,6 +105,36 @@ public class RedisUtil {
             System.err.println("Redis SCAN 出错: " + e.getMessage());
         }
         return keys;  // 确保永远不会返回 null
+    }
+
+    public void pushToRedisListBuffer(String shortUrlBufferName, String shortKey) {
+        redisTemplate.opsForList().rightPush(shortUrlBufferName, shortKey);
+    }
+
+    public List<String> popFromRedisList(String shortUrlBufferKey, int len) {
+        List<String> results = new ArrayList<>();
+        for(int i = 0; i < len; i++) {
+            String tempValue = (String) redisTemplate.opsForList().leftPop(shortUrlBufferKey);
+            if(tempValue == null) {
+                break;
+            }
+            results.add(tempValue);
+        }
+        return results;
+    }
+
+    public boolean exists(String key) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+    }
+
+    public long getListSize(String shortUrlBuffer) {
+        Long size = redisTemplate.opsForList().size(shortUrlBuffer);
+        return size != null ? size : 0;
+    }
+
+    public long getTotalHitsCount() {
+        String value = stringRedisTemplate.opsForValue().get("total_hits_count:");
+        return (value != null && value.matches("\\d+")) ? Long.parseLong(value) : 0;
     }
 
 }

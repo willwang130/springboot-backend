@@ -75,14 +75,14 @@ public class ShortUrlController {
             @ApiResponse(responseCode = "500", description = "服务器错误")
     })
     @GetMapping("/stats/{shortKey}")
-    public ResponseEntity<ApiResponseDTO<Integer>> getAccessCount(
+    public ResponseEntity<ApiResponseDTO<Map<String, Integer>>> getAccessCount(
             @PathVariable String shortKey) {
 
         if (shortKey == null || shortKey.isBlank()) {
             return ResponseEntity.badRequest().body(new ApiResponseDTO<>(400, "短链接不存在", null));
         }
 
-        int count = shortUrlService.getAccessCount(shortKey);
+        Map<String, Integer> count = shortUrlService.getAccessCount(shortKey);
         return ResponseEntity.ok(new ApiResponseDTO<>(200, "访问次数获取成功", count));
     }
 
