@@ -1,12 +1,16 @@
 package com.example.demo.security;
 
+import com.example.demo.service.RedisService;
 import io.jsonwebtoken.Claims;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.constraints.NotNull;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -17,26 +21,33 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Optional;
 
+@Slf4j
+@RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final RedisService redisService;
     private final CustomUserDetailsService userDetailsService;
 
-    public JwtFilter(JwtUtil jwtUtil, CustomUserDetailsService userDetailsService) {
-        this.jwtUtil = jwtUtil;
-        this.userDetailsService = userDetailsService;
-    }
-
     @Override
-    protected void doFilterInternal(@NotNull HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+    protected void doFilterInternal(
+            HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
 
         String token = extractToken(request);
 
-        System.out.println("Received Token: " + token);
+        log.info("Received Token: {}", token);
         if (token != null) {
             try {
+                // 1. 先查是否在黑名单
+                if (redisService.isTokenBlacklisted(token)) {
+                    log.warn("JWT 已被列入黑名单，拒绝访问");
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token 已失效");
+                    return;
+                }
+
+                // 2. 解析 token
                 Claims claims = jwtUtil.parseToken(token);
                 String username = claims.getSubject();
                 String role = claims.get("role", String.class);
@@ -45,6 +56,7 @@ public class JwtFilter extends OncePerRequestFilter {
                     role = "ROLE_" + role.toUpperCase();
                 }
 
+                // 3. 如果 token 有效, 设置 Spring Security 认证
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     // 从数据库获取完整的 UserDetails
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
@@ -57,7 +69,7 @@ public class JwtFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 }
             } catch (Exception e) {
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid Jwt Token");
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid JWT Token");
                 return;
             }
         }

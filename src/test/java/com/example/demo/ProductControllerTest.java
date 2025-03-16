@@ -1,38 +1,37 @@
-package com.example.demo.controller;
+package com.example.demo;
 
+import com.example.demo.controller.ProductController;
+import com.example.demo.dto.ApiResponseDTO;
 import com.example.demo.dto.ProductDTO;
 import com.example.demo.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.JwtBuilder;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import javax.crypto.SecretKey;
-
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @Disabled
+@Import(TestConfig.class)
 @ExtendWith(MockitoExtension.class)
 @WebMvcTest(ProductController.class)     // 只加载 web 层, 不加载 Service 和 Repository
 public class ProductControllerTest {
@@ -40,14 +39,14 @@ public class ProductControllerTest {
     @Autowired
     private MockMvc mockMvc;        // Mock Api 请求
 
+    @Autowired
+    private ObjectMapper objectMapper;      // JSON 解析工具 MVC提供
+
     @MockitoBean
     private ProductService productService;// Mock Service 层
 
-    @Autowired
-    private ObjectMapper objectMapper;      // JSON 解析工具
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
     public void testGetAllProducts() throws Exception {
         List<ProductDTO> mockProducts = Arrays.asList(
                 new ProductDTO(1L ,"Product1", 100.0),
@@ -55,39 +54,41 @@ public class ProductControllerTest {
         );
 
         // Mock Service 返回数据
-        when(productService.getAllProducts()).thenReturn(mockProducts);
-
+        when(productService.getAllProducts())
+                .thenReturn(ResponseEntity.ok(new ApiResponseDTO<>(200, "", mockProducts)));
         // 执行 GET 请求 /products
-        mockMvc.perform(get("/products"))
+        mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].id").value("1"))
-                .andExpect(jsonPath("$[1].name").value("Product2"))
-                .andExpect(jsonPath("$[1].price").value("300.0"));
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[1].name").value("Product2"))
+                .andExpect(jsonPath("$.data[1].price").value(300.0));
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
     public void testGetProductById() throws Exception {
         ProductDTO mockProduct = new ProductDTO(1L,"Laptop", 5000.0);
 
         // Mock Service 层
-        when(productService.getProductById(anyLong())).thenReturn(mockProduct);
+        when(productService.getProductById(anyLong()))
+                .thenReturn(ResponseEntity.ok(new ApiResponseDTO<>(200, "", mockProduct)));
 
-        mockMvc.perform(get("/products/1"))
+        mockMvc.perform(get("/api/products/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value("1"))
-                .andExpect(jsonPath("$.name").value("Laptop"))
-                .andExpect(jsonPath("$.price").value("5000.0"));
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.name").value("Laptop"))
+                .andExpect(jsonPath("$.data.price").value(5000.0));
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
     public void testAddProduct() throws Exception {
         ProductDTO mockProduct = new ProductDTO(1L,"Banana", 20.0);
 
-        mockMvc.perform(post("/products")
-                        .with(jwt())
+        // Mock Service 层
+        when(productService.addProduct(any(ProductDTO.class))).
+                thenReturn(ResponseEntity.ok(new ApiResponseDTO<>(200, "", mockProduct)));
+
+        mockMvc.perform(post("/api/products")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(mockProduct)))
                 .andExpect(status().isOk());

@@ -59,7 +59,10 @@ services:
       - "6379:6379"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD} --bind 0.0.0.0  # 让 Redis 允许外部访问 Testing
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf  # 挂载 redis.conf 配置文件
+      - ./data:/data  # 持久化 Redis 数据
 
     # RabbitMQ 队列
   rabbitmq:

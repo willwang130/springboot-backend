@@ -18,14 +18,11 @@ import java.util.Map;
 @Tag(name = "短链接管理", description = "提供短链接生成, 跳转, 访问统计等 API")
 @RestController
 @Validated
+@RequiredArgsConstructor
 @RequestMapping("/api/short-url")
 public class ShortUrlController {
 
     private final ShortUrlService shortUrlService;
-
-    public ShortUrlController(ShortUrlService shortUrlService) {
-        this.shortUrlService=shortUrlService;
-    }
 
     // 短链接跳转
     @Operation(summary = "短链接跳转", description = "访问短链接，自动跳转到原始长链接")
@@ -36,18 +33,10 @@ public class ShortUrlController {
     })
     @GetMapping("/{shortKey}")
     public ResponseEntity<ApiResponseDTO<String>> redirect(
-            @PathVariable String shortKey) {
-
-        if (shortKey == null || shortKey.isBlank()) {
-            return ResponseEntity.badRequest().body(new ApiResponseDTO<>(400, "短链接不存在", null));
-        }
-
-        String longUrl = shortUrlService.redirect(shortKey);
-        if (longUrl.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.status(302).header("Location", longUrl).build();
+            @PathVariable @NotBlank String shortKey) {
+        return shortUrlService.redirect(shortKey);
     }
+
 
     @Operation(summary = "生成短链接", description = "输入长链接，生成唯一短链接")
     @ApiResponses({
@@ -57,16 +46,10 @@ public class ShortUrlController {
     })
     @PostMapping
     public ResponseEntity<ApiResponseDTO<String>> createShortUrl(
-            @RequestBody Map<String, String> request) { // 如 longUrl = http://localhost/api/test/hello
-        String longUrl =request.get("longUrl");
-
-        if (longUrl == null || longUrl.isBlank()) {
-            return ResponseEntity.badRequest().body(new ApiResponseDTO<>(400, "无效的 URL", null));
-        }
-
-        String shortKey = shortUrlService.createShortUrl(longUrl);
-        return ResponseEntity.ok(new ApiResponseDTO<>(200, "短链接生成成功", shortKey));
+            @RequestBody Map<String, @NotBlank String> request) { // 如 longUrl = http://localhost/api/test/hello
+        return shortUrlService.createShortUrl(request.get("longUrl"));
     }
+
 
     @Operation(summary = "获取访问次数", description = "查询短链接的访问统计数据")
     @ApiResponses({
@@ -76,14 +59,8 @@ public class ShortUrlController {
     })
     @GetMapping("/stats/{shortKey}")
     public ResponseEntity<ApiResponseDTO<Map<String, Integer>>> getAccessCount(
-            @PathVariable String shortKey) {
-
-        if (shortKey == null || shortKey.isBlank()) {
-            return ResponseEntity.badRequest().body(new ApiResponseDTO<>(400, "短链接不存在", null));
-        }
-
-        Map<String, Integer> count = shortUrlService.getAccessCount(shortKey);
-        return ResponseEntity.ok(new ApiResponseDTO<>(200, "访问次数获取成功", count));
+            @PathVariable @NotBlank String shortKey) {
+        return shortUrlService.getAccessCount(shortKey);
     }
 
 }

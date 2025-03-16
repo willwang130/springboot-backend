@@ -1,7 +1,10 @@
 package com.example.demo.security;
 
+import com.example.demo.service.RedisService;
+import com.example.demo.util.RedisUtil;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -10,15 +13,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 @Component
+@RequiredArgsConstructor
 public class JwtUtil {
 
+    private final RedisService redisService;
     // 从 application.properties 读取配置
     @Value("${jwt.secret}")
     private String secretKey;
-
     @Value("${jwt.expiration}")
     private long expiration;
-
     @Value("${jwt.refreshExpiration}")
     private long refreshExpiration;
 
@@ -55,7 +58,7 @@ public class JwtUtil {
         try {
             SecretKey key = Keys.hmacShaKeyFor((secretKey.getBytes(StandardCharsets.UTF_8)));
             return Jwts.parserBuilder()         // 创建 JwtParserBuilder
-                    .setSigningKey(key)  // 设置密钥（用于验证签名）
+                    .setSigningKey(key)         // 设置密钥（用于验证签名）
                     .build()                    // 创建 JwtParser 实例
                     .parseClaimsJws(token)      // 解析 Token，检查签名和有效期
                     .getBody();                 // 获取 Payload
@@ -75,5 +78,14 @@ public class JwtUtil {
             System.out.println("JWT Parsing Failed: " + e.getMessage()); //  其他错误
             throw e;
         }
+    }
+
+    public long getExpirationFromToken(String token) {
+        Claims claim = parseToken(token);
+        return claim.getExpiration().getTime() - System.currentTimeMillis();
+    }
+
+    public long getExpiration(String token) {
+        return getExpirationFromToken(token);
     }
 }

@@ -24,7 +24,7 @@ public interface ShortUrlRepository extends JpaRepository<ShortUrl, Long> {
 
     // 查询最近 N 分钟内access_count更新,访问 MySQL 总次数
     @Query(value = "SELECT SUM(access_count) FROM short_url WHERE updated_at >= NOW() - INTERVAL ?1 MINUTE", nativeQuery = true)
-    long sumUpdatesLastNMin(@Param("minutes") int minutes);
+    Optional<Long> sumUpdatesLastNMin(@Param("minutes") int minutes);
 
     @Modifying
     @Query("UPDATE ShortUrl u SET u.accessCount = 0")

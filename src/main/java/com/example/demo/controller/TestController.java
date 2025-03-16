@@ -1,8 +1,10 @@
 package com.example.demo.controller;
 
 
+import com.example.demo.dto.ApiResponseDTO;
 import com.example.demo.repository.ShortUrlRepository;
 import com.example.demo.service.TestService;
+import com.example.demo.util.BloomFilterUtil;
 import com.example.demo.util.RedisUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,6 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import javax.swing.*;
 import java.io.IOException;
 
 @RestController
@@ -26,6 +29,7 @@ public class TestController {
     private final RedisUtil redisUtil;
     private final TestService testService;
     private final ShortUrlRepository shortUrlRepository;
+    private final BloomFilterUtil bloomFilterUtil;
 
 
     @Operation(summary = "测试 Redis 连接", description = "返回 Redis 连接状态")
@@ -86,11 +90,16 @@ public class TestController {
         shortUrlRepository.resetAllAccessCounts();
 
         // 清空 Redis 访问计数
-        redisUtil.deleteCache("total_hits_count");
+        redisUtil.deleteCache("total_hits_count:");
 
-        return ResponseEntity.ok("✅ 成功清空 MySQL `access_count` 和 Redis `total_hits_count`");
+        return ResponseEntity.ok("成功清空 MySQL `access_count` 和 Redis `total_hits_count`");
     }
 
+    @Operation(summary = "重建 Bloom Filter", description = "删除已有 手动重建 返回新存 id 数量")
+    @PostMapping("/rest-bloom")
+    public  ResponseEntity<ApiResponseDTO<Integer>> resetBloomFilterManually() {
+        return bloomFilterUtil.resetBloomFilter();
+    }
 
 }
 

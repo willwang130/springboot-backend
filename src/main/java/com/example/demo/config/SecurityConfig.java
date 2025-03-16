@@ -3,6 +3,7 @@ package com.example.demo.config;
 import com.example.demo.security.CustomUserDetailsService;
 import com.example.demo.security.JwtFilter;
 import com.example.demo.security.JwtUtil;
+import com.example.demo.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -21,6 +22,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtUtil jwtUtil;
+    private final RedisService redisService;
     private final CustomUserDetailsService userDetailsService;
     private final static String apiUrl = "/api";
 
@@ -56,7 +58,7 @@ public class SecurityConfig {
 
     @Bean
     public JwtFilter jwtFilter() {
-        return new JwtFilter(jwtUtil, userDetailsService);
+        return new JwtFilter(jwtUtil, redisService,userDetailsService);
     }
 
     @Bean

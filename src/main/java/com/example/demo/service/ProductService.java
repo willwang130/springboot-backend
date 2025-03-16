@@ -6,6 +6,8 @@ import com.example.demo.exception.ProductLockException;
 import com.example.demo.repository.ProductRepository;
 import com.example.demo.exception.ProductNotFoundException;
 import com.example.demo.dto.ApiResponseDTO;
+import com.example.demo.util.BloomFilterUtil;
+import com.example.demo.webSocket.WebSocketNotificationHandler;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -27,55 +30,67 @@ public class ProductService {
 
     private final ProductRepository productRepository; // ProductRepository是数据库操作的接口, 用于增删改查Product表的数据
     private final RedisService redisService;
+    private final BloomFilterUtil bloomFilterUtil;
+    private final WebSocketNotificationHandler notificationHandler;
 
 
-    public ProductDTO getProductById(Long id) {
+    public ResponseEntity<ApiResponseDTO<ProductDTO>> getProductById(Long id) {
         String cacheKey = "product:" + id;
 
-        // 先查询缓存
-        ProductDTO cacheProduct = redisService.getAndConvertValueToType(cacheKey, new TypeReference<ProductDTO>() {});
-        if (cacheProduct != null) {
+        // 1. 先查 Bloom 过滤器
+        if (!bloomFilterUtil.mightContain("product:", id.toString())) {
+            return ResponseEntity.status(404)
+                    .body(new ApiResponseDTO<>(404, "产品 ID " + id + "不存在", null));
+        };
+
+        // 2. 查询缓存
+        ProductDTO cacheProduct = redisService.getFromCacheWithType(cacheKey, new TypeReference<ProductDTO>() {});
+        if (cacheProduct != null) { // 防穿透
             if("NULL".equals(cacheProduct.getName())) {
                 log.warn("产品 ID {} 在 Redis 缓存中标记为空数据，返回 404", id);
-                throw new ProductLockException("产品 ID " + id + " 不存在");
+                return ResponseEntity.status(404)
+                        .body(new ApiResponseDTO<>(404, "产品 ID " + id + "不存在", null));
             }
             log.warn("从 Redis 缓存中获取产品: cacheProduct:ID={} name={}, price={}",id, cacheProduct.getName(), cacheProduct.getPrice());
-             return cacheProduct;
+            return ResponseEntity.ok(new ApiResponseDTO<>(200, "成功", cacheProduct));
         }
 
-        // 查询数据库，如果不存在，缓存空值防止缓存穿透
+        // 3. 查询 MySQL
         Product product =  productRepository.findById(id)
-                .orElseThrow(() -> {
-                    log.warn("产品 ID {} 不存在，缓存空值以防止缓存穿透", id);
-                    redisService.setCache(cacheKey, new ProductDTO(null, "NULL", 0.0), 60, TimeUnit.SECONDS);
-                    return new ProductLockException("产品 ID " + id + " 不存在");
-                });
+                .orElse(null);
+        // 如果不存在, 缓存空值防止缓存穿透
+        if (product == null) {
+            log.warn("产品 ID {} 不存在，缓存空值以防止缓存穿透", id);
+            redisService.setFromCacheWithObject(cacheKey, new ProductDTO(null, "NULL", 0.0), 60, TimeUnit.SECONDS);
+            return  ResponseEntity.status(404).body(new ApiResponseDTO<>(404, "产品 ID " + id + " 不存在",null));
+        }
 
-        // 将数据库数据转换为 DTO，并存入缓存
+        // 将数据库数据转换为 DTO，并存入 Redis
         ProductDTO productDTO = new ProductDTO(product.getId(), product.getName(), product.getPrice());
-        redisService.setCache(cacheKey, productDTO, 10, TimeUnit.MINUTES);
-        return productDTO;
+        redisService.setFromCacheWithObject(cacheKey, productDTO, 10, TimeUnit.MINUTES);
+
+        return ResponseEntity.ok(new ApiResponseDTO<>(200, "成功", productDTO));
     }
 
-    public List<ProductDTO> getAllProducts() {
+    public ResponseEntity<ApiResponseDTO<List<ProductDTO>>> getAllProducts() {
 
         String cacheKey = "all_products";
-        // 从 Redis 获取缓存的所有产品数据
-        List<ProductDTO> cacheProducts = redisService.getAndConvertValueToType(cacheKey, new TypeReference<List<ProductDTO>>() {});
+        // 1. 查询缓存
+        List<ProductDTO> cacheProducts = redisService.getFromCacheWithType(cacheKey, new TypeReference<List<ProductDTO>>() {});
 
-        // cache 有的话直接返回
         if (cacheProducts != null) {
-            return cacheProducts;
+            return ResponseEntity.ok(new ApiResponseDTO<>(200, "成功", cacheProducts));
         }
 
-        // 如果缓存没有 查询数据库
+        // 2. 查询 MySQL
         List<Product> products = productRepository.findAll();
 
         if (products.isEmpty()) {
             log.warn("No products found in database when finding all products, returning empty list.");
             // 防止穿透
-            redisService.setCache(cacheKey, Collections.emptyList(), 30, TimeUnit.SECONDS);
-            return Collections.emptyList();
+            redisService.setFromCacheWithObject(cacheKey, Collections.emptyList(), 30, TimeUnit.SECONDS);
+            return ResponseEntity.status(404)
+                    .body(new ApiResponseDTO<>(404, "MySQL 没有", null));
         }
 
         // 将查询到的 Product 转换成 ProductDTO 列表
@@ -84,50 +99,54 @@ public class ProductService {
                 .collect(toList());
 
         // 存入 cache 时限 10分钟
-        redisService.setCache(cacheKey, productDTOS, 3, TimeUnit.MINUTES);
+        redisService.setFromCacheWithObject(cacheKey, productDTOS, 3, TimeUnit.MINUTES);
 
-        return productDTOS;
+        return ResponseEntity.ok(new ApiResponseDTO<>(200, "成功", productDTOS));
     }
 
-    public List<ProductDTO> getProductByCategoryAndMinPrice(String category, double minPrice) {
+    public ResponseEntity<ApiResponseDTO<List<ProductDTO>>> getProductByCategoryAndMinPrice(String category, double minPrice) {
 
         String cacheKey = "category:" + category + " minPrice:" + minPrice;
 
-        List<ProductDTO> cacheProducts = redisService.getAndConvertValueToType(cacheKey, new TypeReference<List<ProductDTO>>() {});
-
+        // 查 Redis
+        List<ProductDTO> cacheProducts = redisService.getFromCacheWithType(cacheKey, new TypeReference<List<ProductDTO>>() {});
         if (cacheProducts != null) {
-            return cacheProducts;
+            return ResponseEntity.ok(new ApiResponseDTO<>(200, "成功", cacheProducts));
         }
 
+        // 查 MySQL
         List<Product> products = productRepository.findByNameContainingAndPriceGreaterThanEqual(category, minPrice);
-
         if (products.isEmpty()) {
             log.warn("No products found in database with category {} minPrice {}, returning empty list.", category, minPrice);
             // 防止穿透
-            redisService.setCache(cacheKey, Collections.emptyList(), 30, TimeUnit.SECONDS);
-            return Collections.emptyList();
+            redisService.setFromCacheWithObject(cacheKey, Collections.emptyList(), 30, TimeUnit.SECONDS);
+            return ResponseEntity.status(404)
+                    .body(new ApiResponseDTO<>(404, "MySQL返回: 没有", null));
         }
 
-        // to DTOS
+        // to DTOs 再存入 Redis + Bloom
         List<ProductDTO> productDTOS = products.stream()
                 .map(product -> new ProductDTO(product.getId(), product.getName(), product.getPrice()))
                 .collect(toList());
 
-        redisService.setCache(cacheKey, productDTOS, 3, TimeUnit.MINUTES);
+        redisService.setFromCacheWithObject(cacheKey, productDTOS, 3, TimeUnit.MINUTES);
 
-        return productDTOS;
+        return ResponseEntity.ok(new ApiResponseDTO<>(200, "成功", cacheProducts));
     }
 
 
-    public ProductDTO addProduct(ProductDTO productDTO) {
-        String lockKey = "lock:add_product";
+    public ResponseEntity<ApiResponseDTO<ProductDTO>> addProduct(ProductDTO productDTO) {
+        String lockKey = "lock:add_product:";
         String requestId = UUID.randomUUID().toString();
         log.info("Enter ProductService ok");
 
         // 尝试获取 Redis 分布式锁，最多等待 10 秒
         if (!redisService.tryLock(lockKey, requestId, 10)) {
-            throw new ProductLockException("请求过于繁忙, 请稍后再试, Server is busy, try later");
+            log.info("请求过于繁忙, 请稍后再试");
+            return ResponseEntity.status(429)
+                    .body(new ApiResponseDTO<>(429,"请求过于繁忙, 请稍后再试, Server is busy, try later", null));
         }
+
         log.info("Set Lock ok");
         try {
             Product product = Product.builder()
@@ -136,26 +155,36 @@ public class ProductService {
                     .build();
 
             productRepository.save(product);
-            redisService.setCache("product:" + product.getId(), productDTO, 10, TimeUnit.MINUTES);
+            productDTO.setId(product.getId()); // 设置 ID
+
+            redisService.setFromCacheWithObject("product:" + product.getId(), productDTO, 10, TimeUnit.MINUTES);
+            // 加入 Bloom 过滤器
+            bloomFilterUtil.addToBloomFilter("product:", product.getId().toString());
+
             // 考虑之后将其分片缓存或采取分布式缓存管理方案（例如 Redis Cluster 或分布式缓存工具如 Hazelcast）。
-
             log.info("调用 redisService.deleteCache(\"all_products\")");
-            redisService.deleteCache("all_products");
+            redisService.deleteFromCache("all_products");
 
-            return productDTO;
+            // 新增产品后通知 WebSocket
+            notificationHandler.sendNotification("新增产品: " + productDTO.getName());
 
+            return ResponseEntity.status(201).body(new ApiResponseDTO<>(201, "产品创建成功", productDTO));
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         } finally {
             redisService.unlock(lockKey, requestId);   // 释放锁
         }
     }
 
     @Transactional
-    public long updateProduct(Long id, ProductDTO productDTO) {
-        String lockKey = "lock:update_product" + id;
+    public ResponseEntity<ApiResponseDTO<Long>> updateProduct(Long id, ProductDTO productDTO) {
+        String lockKey = "lock:update_product:" + id;
         String requestId  = UUID.randomUUID().toString();
 
         if (!redisService.tryLock(lockKey, requestId , 10)) {
-            throw new ProductLockException("请求过于繁忙, 请稍后再试, 已被锁");
+            return ResponseEntity.status(429)
+                    .body(new ApiResponseDTO<>(429, "请求过于繁忙，请稍后再试", null));
         }
 
         try {
@@ -169,13 +198,23 @@ public class ProductService {
             productRepository.save(product);
 
             // 更新 Redis 缓存
-            redisService.setCache("product:" + id, productDTO, 10, TimeUnit.MINUTES);
+            redisService.setFromCacheWithObject("product:" + id, productDTO, 10, TimeUnit.MINUTES);
+            // 加入 Bloom 过滤器
+            bloomFilterUtil.addToBloomFilter("product:", product.getId().toString());
+
             // 考虑之后将其分片缓存或采取分布式缓存管理方案（例如 Redis Cluster 或分布式缓存工具如 Hazelcast）。
-            redisService.deleteCache("all_products");
+            redisService.deleteFromCache("all_products");
 
             log.debug("Product ID {} successfully updated", id);
 
-            return id;
+            // 更新产品后通知 WebSocket
+            notificationHandler.sendNotification("产品更新: " + productDTO.getName() + " ID: " + id);
+
+            return ResponseEntity.status(201)
+                    .body(new ApiResponseDTO<>(200, "产品更新成功", id));
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         } finally {
             log.info("Releasing lock: {}", lockKey);
             redisService.unlock(lockKey, requestId);
@@ -183,7 +222,7 @@ public class ProductService {
     }
 
     public ResponseEntity<ApiResponseDTO<Long>> deleteProduct(Long id) {
-        String lockKey = "lock:delete_product" + id;
+        String lockKey = "lock:delete_product:" + id;
         String requiredId = UUID.randomUUID().toString();
 
         if (!redisService.tryLock(lockKey, requiredId, 10)) {
@@ -198,11 +237,20 @@ public class ProductService {
 
             productRepository.deleteById(id);
 
-            redisService.deleteCache("product:" +id);
+            // 缓存 NULL 减少误判
+            redisService.setFromCacheWithObject(
+                    "product:" + id, new ProductDTO(null, "NULL", 0.0), 60, TimeUnit.SECONDS);
             // 考虑之后将其分片缓存或采取分布式缓存管理方案（例如 Redis Cluster 或分布式缓存工具如 Hazelcast）。
-            redisService.deleteCache("all_products");
+            redisService.deleteFromCache("all_products");
+
+
+            // 更新产品后通知 WebSocket
+            notificationHandler.sendNotification("产品删除成功 ID: " + id);
+
 
             return ResponseEntity.ok(new ApiResponseDTO<>(200, "产品删除成功", id));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         } finally {
             redisService.unlock(lockKey, requiredId);
         }

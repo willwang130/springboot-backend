@@ -133,9 +133,32 @@
             console.log("收到服务器心跳 ping，保持连接");
             return;
         }
-        let div = document.getElementById("notification");
-        div.innerHTML += "<p>" + event.data + "</p>";
-        console.log("收到 WebSocket 消息: " + event.data);
+
+        console.log("Raw WebSocket Message:", event.data); // 确保是正确的 JSON 格式
+        try {
+            let data = JSON.parse(event.data);
+
+            // 更新 Test 2 & Test 3，
+            if (data.type === "test") {
+                if (data.test2) {
+                    document.getElementById("testResult2").innerText = data.test2;
+                }
+                if (data.test3) {
+                    document.getElementById("testResult3").innerText = data.test3;
+                }
+                return;
+            }
+
+
+            // WebSocket 其他监听逻辑
+            let div = document.getElementById("notification");
+            div.innerHTML += "<p>" + event.data + "</p>";
+            console.log("收到 WebSocket 消息: " + event.data);
+
+        } catch (e) {
+            console.warn("非 JSON 消息:", event.data);
+            document.getElementById("notification").innerHTML += "<p>" + event.data + "</p>";
+        }
     };
 
     socket.onclose = function() {

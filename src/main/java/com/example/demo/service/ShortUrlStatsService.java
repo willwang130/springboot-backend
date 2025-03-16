@@ -1,21 +1,25 @@
 package com.example.demo.service;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.example.demo.repository.ShortUrlRepository;
 import com.example.demo.util.RedisUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ShortUrlStatsService {
 
-    private final RedisUtil redisUtil;
+    private final RedisService redisService;
     private final ShortUrlRepository shortUrlRepository;
     private static final String REDIS_HITS_PREFIX = "short_url_hits:";
 
@@ -23,10 +27,12 @@ public class ShortUrlStatsService {
     @Transactional
     @Scheduled(fixedRate = 5 * 1000)
     public void synAccessCountToRedis() {
+
         String redisListKey = "short_url_buffer";
+
         while (true) {
             // 一次取 100 个, 避免超大流量
-            List<String> shortKeyList = redisUtil.popFromRedisList("short_url_buffer", 100);
+            List<String> shortKeyList = redisService.popFromRedisList("short_url_buffer", 100);
             if (shortKeyList == null || shortKeyList.isEmpty()) {
                 break;
             }
@@ -39,8 +45,8 @@ public class ShortUrlStatsService {
 
             // 统一更新给 Redis 访问次数
             for (Map.Entry<String, Integer> entry : countMap.entrySet()) {
-                redisUtil.incrementByInteger(REDIS_HITS_PREFIX + entry.getKey(), entry.getValue());
-                redisUtil.incrementByInteger("total_hits_count:", entry.getValue());  // 记录总访问量 测试用
+                redisService.incrementByInteger(REDIS_HITS_PREFIX + entry.getKey(), entry.getValue());
+                redisService.incrementByInteger("total_hits_count:", entry.getValue());  // 记录总访问量 测试用
             }
         }
     }
@@ -51,19 +57,20 @@ public class ShortUrlStatsService {
     public void synAccessCountToDatabase() throws InterruptedException {
 
         // 获取所有 Redis 计数 Key
-        Set<String> keys = redisUtil.getKeysByPattern(REDIS_HITS_PREFIX + "*");
+        Set<String> keys = redisService.getKeysByPattern(REDIS_HITS_PREFIX + "*");
 
         for (String redisKey : keys) {
             String shortKey = redisKey.replace(REDIS_HITS_PREFIX, ""); // 获取短链接 Key
-            String redisCount = redisUtil.getTokenByKey(redisKey);
+            String redisCount = redisService.getStringWithKey(redisKey);
 
             if (redisCount != null) {
                 int count = Integer.parseInt(redisCount);
                 log.info("更新访问计数");
-                shortUrlRepository.incrementAccessCount(shortKey, count);
-
-                // 清空 Redis 计数
-                redisUtil.deleteCache(redisKey);
+                if (count > 0) {
+                    shortUrlRepository.incrementAccessCount(shortKey, count);
+                    redisService.incrementByInteger(redisKey, -count); // 递减，不是删除
+                    redisService.setKeyExpire(redisKey, 10, TimeUnit.MINUTES); // 10 分钟后删除
+                }
             }
         }
     }

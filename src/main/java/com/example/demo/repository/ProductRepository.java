@@ -14,4 +14,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     // 找到 Product 表最新创建的 id
     @Query(value = "SELECT id FROM product ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
     Optional<Long> findFirstValidProductId();
+
+    @Query("SELECT p.id FROM Product p")
+    List<Long> findAllProductIds();
 }
