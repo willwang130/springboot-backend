@@ -30,4 +30,6 @@ public interface ShortUrlRepository extends JpaRepository<ShortUrl, Long> {
     @Query("UPDATE ShortUrl u SET u.accessCount = 0")
     void resetAllAccessCounts();
 
+    @Query("SELECT s.id FROM ShortUrl s")
+    List<Long> findAllShortUrlIds();
 }

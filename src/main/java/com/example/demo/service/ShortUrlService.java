@@ -4,6 +4,7 @@ import com.example.demo.dto.ApiResponseDTO;
 import com.example.demo.entity.ShortUrl;
 import com.example.demo.repository.ShortUrlRepository;
 import com.example.demo.service.RabbitMQ.RabbitMQProducer;
+import com.example.demo.util.BloomFilterUtil;
 import com.example.demo.util.RedisUtil;
 import com.example.demo.util.ShortKeyGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -27,27 +28,35 @@ public class ShortUrlService {
     private final ShortUrlRepository shortUrlRepository;
     private final RedisService redisService;
     private final RabbitMQProducer rabbitMQProducer;
+    private final BloomFilterUtil bloomFilterUtil;
     private static final String REDIS_KEY_PREFIX = "short_url:";
     private static final String REDIS_HITS_PREFIX = "short_url_hits:";
-
+    private static final String BLOOM_FILTER_NAME_SHORT = "bloom:shortUrl:";
 
 
     public ResponseEntity<ApiResponseDTO<String>> redirect(String shortKey) {
-        // 1. 先查 Redis 缓存
+
+        // 1. 先查询 Bloom 过滤器
+        if (!bloomFilterUtil.mightContain(BLOOM_FILTER_NAME_SHORT, shortKey)) {
+            return ResponseEntity.status(404).body(new ApiResponseDTO<>(404, "短链接不存在", null));
+        }
+
+        // 2. 查 Redis 缓存
         String longUrl = redisService.getFromCacheWithType(REDIS_KEY_PREFIX + shortKey, new TypeReference<String>() {});
 
-        // 2. 如果 Redis 没有 再查数据库
+        // 3. 如果 Redis 没有
         if (longUrl == null) {
+            // 再查数据库
             Optional<ShortUrl> optional = shortUrlRepository.findByShortKey(shortKey);
             if (optional.isEmpty()) {
                 return ResponseEntity.status(404).body(new ApiResponseDTO<>(404, "短链接不存在", null));
             }
-            // 如果redis 有 存入 Redis
+            // 存入 Redis
             longUrl = optional.get().getLongUrl();
             redisService.setFromCacheWithObject(REDIS_KEY_PREFIX + shortKey, longUrl, 7, TimeUnit.DAYS);
         }
 
-        // 3. 统计访问次数 发送消息到 RabbitMQ
+        // 4. 统计访问次数 发送消息到 RabbitMQ
         log.info("Producer 发送消息: {}", shortKey);
         rabbitMQProducer.sendMessage(shortKey);
 
@@ -59,13 +68,13 @@ public class ShortUrlService {
 
     @Transactional
     public ResponseEntity<ApiResponseDTO<String>> createShortUrl(String longUrl) {
-        // 先查 Redis 缓存
+        // 1. 先查 Redis 缓存
         String shortKey = redisService.getFromCacheWithType(REDIS_KEY_PREFIX + "longUrl:" +longUrl, new TypeReference<String>() {});
         if(shortKey != null) {
             return ResponseEntity.ok(new ApiResponseDTO<>(200, "Redis 短链接已存在", shortKey));
         }
 
-        // 查询数据库是否已有相同 longUrl      Redis 会过期
+        // 2. 查询数据库是否已有相同 longUrl      Redis 会过期
         ShortUrl existing = shortUrlRepository.findByLongUrl(longUrl);
         if (existing != null) {
             // 存 Redis 1天期限 防止重复创建
@@ -74,15 +83,20 @@ public class ShortUrlService {
             return ResponseEntity.ok(new ApiResponseDTO<>(200, "MySQL 短链接已存在", shortKey)); // 直接返回已有短链接
         }
 
-        // 1. 生成短链接 Key (BASE62 + 雪花算法)
+        // 3. 生成短链接 Key (BASE62 + 雪花算法)
         shortKey = ShortKeyGenerator.generate();
         ShortUrl entity = ShortUrl.builder()
                 .shortKey(shortKey)
                 .longUrl(longUrl)
                 .build();
-        // 2. 存入数据库
+        // 4. 存入数据库
         shortUrlRepository.save(entity);
-        // 3. 存入 Redis 缓存
+
+        // 5. 添加到 Bloom Filter
+        bloomFilterUtil.addToBloomFilter(BLOOM_FILTER_NAME_SHORT, shortKey);
+
+
+        // 6. 存入 Redis 缓存
         redisService.setFromCacheWithObject(REDIS_KEY_PREFIX + shortKey, longUrl, 7, TimeUnit.DAYS);
 
         return ResponseEntity.ok(new ApiResponseDTO<>(200, "短链接生成成功", shortKey));

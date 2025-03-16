@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.swing.*;
 import java.io.IOException;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/test")
@@ -97,7 +98,7 @@ public class TestController {
 
     @Operation(summary = "重建 Bloom Filter", description = "删除已有 手动重建 返回新存 id 数量")
     @PostMapping("/rest-bloom")
-    public  ResponseEntity<ApiResponseDTO<Integer>> resetBloomFilterManually() {
+    public  ResponseEntity<ApiResponseDTO<Map<String, Integer>>> resetBloomFilterManually() {
         return bloomFilterUtil.resetBloomFilter();
     }
 

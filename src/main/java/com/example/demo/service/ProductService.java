@@ -2,7 +2,6 @@ package com.example.demo.service;
 
 import com.example.demo.entity.Product;
 import com.example.demo.dto.ProductDTO;
-import com.example.demo.exception.ProductLockException;
 import com.example.demo.repository.ProductRepository;
 import com.example.demo.exception.ProductNotFoundException;
 import com.example.demo.dto.ApiResponseDTO;
@@ -32,13 +31,13 @@ public class ProductService {
     private final RedisService redisService;
     private final BloomFilterUtil bloomFilterUtil;
     private final WebSocketNotificationHandler notificationHandler;
-
+    private static final String BLOOM_FILTER_NAME_PRODUCT = "bloom:product:";
 
     public ResponseEntity<ApiResponseDTO<ProductDTO>> getProductById(Long id) {
         String cacheKey = "product:" + id;
 
         // 1. 先查 Bloom 过滤器
-        if (!bloomFilterUtil.mightContain("product:", id.toString())) {
+        if (!bloomFilterUtil.mightContain(BLOOM_FILTER_NAME_PRODUCT, id.toString())) {
             return ResponseEntity.status(404)
                     .body(new ApiResponseDTO<>(404, "产品 ID " + id + "不存在", null));
         };
@@ -58,8 +57,7 @@ public class ProductService {
         // 3. 查询 MySQL
         Product product =  productRepository.findById(id)
                 .orElse(null);
-        // 如果不存在, 缓存空值防止缓存穿透
-        if (product == null) {
+        if (product == null) { // 如果不存在, 缓存空值防止缓存穿透
             log.warn("产品 ID {} 不存在，缓存空值以防止缓存穿透", id);
             redisService.setFromCacheWithObject(cacheKey, new ProductDTO(null, "NULL", 0.0), 60, TimeUnit.SECONDS);
             return  ResponseEntity.status(404).body(new ApiResponseDTO<>(404, "产品 ID " + id + " 不存在",null));
@@ -124,7 +122,7 @@ public class ProductService {
                     .body(new ApiResponseDTO<>(404, "MySQL返回: 没有", null));
         }
 
-        // to DTOs 再存入 Redis + Bloom
+        // to DTOs 再存入 Redis
         List<ProductDTO> productDTOS = products.stream()
                 .map(product -> new ProductDTO(product.getId(), product.getName(), product.getPrice()))
                 .collect(toList());
@@ -159,7 +157,7 @@ public class ProductService {
 
             redisService.setFromCacheWithObject("product:" + product.getId(), productDTO, 10, TimeUnit.MINUTES);
             // 加入 Bloom 过滤器
-            bloomFilterUtil.addToBloomFilter("product:", product.getId().toString());
+            bloomFilterUtil.addToBloomFilter(BLOOM_FILTER_NAME_PRODUCT, product.getId().toString());
 
             // 考虑之后将其分片缓存或采取分布式缓存管理方案（例如 Redis Cluster 或分布式缓存工具如 Hazelcast）。
             log.info("调用 redisService.deleteCache(\"all_products\")");
@@ -200,7 +198,7 @@ public class ProductService {
             // 更新 Redis 缓存
             redisService.setFromCacheWithObject("product:" + id, productDTO, 10, TimeUnit.MINUTES);
             // 加入 Bloom 过滤器
-            bloomFilterUtil.addToBloomFilter("product:", product.getId().toString());
+            bloomFilterUtil.addToBloomFilter(BLOOM_FILTER_NAME_PRODUCT, product.getId().toString());
 
             // 考虑之后将其分片缓存或采取分布式缓存管理方案（例如 Redis Cluster 或分布式缓存工具如 Hazelcast）。
             redisService.deleteFromCache("all_products");
