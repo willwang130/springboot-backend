@@ -9,42 +9,42 @@
 
 ### **功能亮点**
 
-  - 短链接生成与跳转
-  
-  - 访问统计与 Redis 缓存优化
-  
-  - WebSocket 实时消息推送
-  
-  - RabbitMQ + Redis 任务队列优化
-  
-  - Spring Security + JWT 用户认证
-  
-  - Bloom Filter 过滤器优化
-  
-  - 基于 RESTful API 的 CRUD 操作
-  
-  - Swagger API 文档支持
-  
-  - Docker 容器化部署与 Nginx 代理
+- 短链接生成与跳转
+
+- 访问统计与 Redis 缓存优化
+
+- WebSocket 实时消息推送
+
+- RabbitMQ + Redis 任务队列优化
+
+- Spring Security + JWT 用户认证
+
+- Bloom Filter 过滤器优化
+
+- 基于 RESTful API 的 CRUD 操作
+
+- Swagger API 文档支持
+
+- Docker 容器化部署与 Nginx 代理
 
 
 ### **技术栈**
 
-  - 后端: Spring Boot, Spring Security, JWT, Redis, RabbitMQ, WebSocket
-  
-  - 数据库: MySQL, Redis (缓存与计数存储)
-  
-  - 缓存优化: Bloom Filter 过滤器
-  
-  - 前端: HTML, JavaScript (用于测试)
-  
-  - 容器化: Docker, Docker Compose, Nginx 反向代理
-  
-  - API 文档: Swagger (OpenAPI 3)
+- 后端: Spring Boot, Spring Security, JWT, Redis, RabbitMQ, WebSocket
+
+- 数据库: MySQL, Redis (缓存与计数存储)
+
+- 缓存优化: Bloom Filter 过滤器
+
+- 前端: HTML, JavaScript (用于测试)
+
+- 容器化: Docker, Docker Compose, Nginx 反向代理
+
+- API 文档: Swagger (OpenAPI 3)
 
 
 ### **系统架构**
-    
+
     graph DT;
         用户 -->|请求短链接| Nginx -->|转发 API| SpringBoot
         SpringBoot -->|查询 Redis| Redis
@@ -64,11 +64,11 @@
 
 **2. 访问 Web 页面**
 
-  - 短链接测试: http://localhost
+- 短链接测试: http://localhost
 
-  - Swagger API: http://localhost/swagger-ui/index.html
+- Swagger API: http://localhost/swagger-ui/index.html
 
-  - RabbitMQ 管理界面: http://localhost:15672（默认账号: guest / guest）
+- RabbitMQ 管理界面: http://localhost:15672 （默认账号: guest / guest）
 
 
 ## **API 说明**
@@ -120,6 +120,49 @@
 
 ## 未来优化
 
-  - 增加 Prometheus 监控 Redis / MySQL / RabbitMQ
-  - 研究 Kafka 处理高并发短链接访问
-  - 尝试 CI/CD，自动化构建 Docker 镜像和部署
+- 增加 Prometheus 监控 Redis / MySQL / RabbitMQ
+- 研究 Kafka 处理高并发短链接访问
+- 尝试 CI/CD，自动化构建 Docker 镜像和部署
+
+
+
+
+## English Version
+
+### Project Overview
+A Spring Boot based short URL service system integrating JWT authentication, message queue decoupling (RabbitMQ), Redis caching, WebSocket real-time push, and Bloom filter protection. The project demonstrates high-concurrency optimization and modular architecture.
+
+### Tech Stack
+- Backend: Spring Boot, Spring Security, JWT, Redis, RabbitMQ
+- Database: MySQL
+- Queue & Caching: Redis List, Bloom Filter
+- Deployment: Docker, Nginx, Swagger for API docs
+
+### Features
+- Short URL generation & redirection
+- Async access tracking via RabbitMQ
+- Redis List + batch sync to MySQL
+- Bloom Filter for invalid key filtering
+- JWT-based user auth system with RefreshToken
+- WebSocket for real-time product push updates
+- RESTful API + Swagger UI
+
+### APIs
+| Request | Path                    |  explanation   |
+|------|------------------------------|---------------------|
+| POST | `/api/short-url`             | Generate Short URL   |
+| GET  | `/api/short-url/{shortKey}`   | Short URL redirect（302）|
+| GET  | `/api/short-url/stats/{shortKey}` | Get access records |
+
+| Request  | Path                          | explanation          |
+|------|-------------------------------|--------------------------|
+| POST | `/api/auth/login`             | User Login, Obtain JWT   |
+| POST | `/api/auth/register`          | User register            |
+| POST | `/api/auth/logout`            | User Logout, clear Token |
+| POST | `/api/auth/refresh`           | Refresh JWT Token        |
+
+
+
+### Getting Started
+```bash
+docker-compose up -d
