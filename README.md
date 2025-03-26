@@ -68,7 +68,7 @@
 
   - Swagger API: http://localhost/swagger-ui/index.html
 
-  - RabbitMQ 管理界面: http://localhost:15672（默认账号: guest / guest）
+  - RabbitMQ 管理界面: http://localhost:15672 （默认账号: guest / guest）
 
 
 ## **API 说明**
