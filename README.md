@@ -152,6 +152,15 @@ A Spring Boot based short URL service system integrating JWT authentication, mes
 | GET  | `/api/short-url/{shortKey}`   | Short URL redirect（302）|
 | GET  | `/api/short-url/stats/{shortKey}` | Get access records |
 
+### 3. 用户认证 API (JWT)
+| Request  | Path                          | explanation          |
+|------|-------------------------------|--------------------------|
+| POST | `/api/auth/login`             | User Login, Obtain JWT   |
+| POST | `/api/auth/register`          | User register            |
+| POST | `/api/auth/logout`            | User Logout, clear Token |
+| POST | `/api/auth/refresh`           | Refresh JWT Token        |
+
+
 
 ### Getting Started
 ```bash
