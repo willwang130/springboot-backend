@@ -123,3 +123,36 @@
   - 增加 Prometheus 监控 Redis / MySQL / RabbitMQ
   - 研究 Kafka 处理高并发短链接访问
   - 尝试 CI/CD，自动化构建 Docker 镜像和部署
+
+
+## English Version
+
+### Project Overview
+A Spring Boot based short URL service system integrating JWT authentication, message queue decoupling (RabbitMQ), Redis caching, WebSocket real-time push, and Bloom filter protection. The project demonstrates high-concurrency optimization and modular architecture.
+
+### Tech Stack
+- Backend: Spring Boot, Spring Security, JWT, Redis, RabbitMQ
+- Database: MySQL
+- Queue & Caching: Redis List, Bloom Filter
+- Deployment: Docker, Nginx, Swagger for API docs
+
+### Features
+- Short URL generation & redirection
+- Async access tracking via RabbitMQ
+- Redis List + batch sync to MySQL
+- Bloom Filter for invalid key filtering
+- JWT-based user auth system with RefreshToken
+- WebSocket for real-time product push updates
+- RESTful API + Swagger UI
+
+### APIs
+| Request | Path                    |  explanation   |
+|------|------------------------------|---------------------|
+| POST | `/api/short-url`             | Generate Short URL   |
+| GET  | `/api/short-url/{shortKey}`   | Short URL redirect（302）|
+| GET  | `/api/short-url/stats/{shortKey}` | Get access records |
+
+
+### Getting Started
+```bash
+docker-compose up -d
